@@ -1,0 +1,451 @@
+{% extends 'base.html' %}
+
+
+{% block title %}
+    invoices
+{% endblock title %}
+
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-semibold">Invoice List</h2>
+    </div>
+
+    <div
+        class="card shadow-sm border-0"
+    >
+        <div class="card-body">
+
+            <form method="get" class="row mb-5">
+                <div class="col-md-2">
+                    <select name="status" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Status</option>
+                        <option value="paid" 
+                        {% if request.GET.status == "paid"  %}
+                            selected
+                        {% endif %}
+                                >Paid</option>
+                        <option value="unpaid" 
+                        {% if request.GET.status == "unpaid"  %}
+                            selected
+                        {% endif %}
+                                >Unpaid</option>
+                        <option value="suspended" 
+                        {% if request.GET.status == "suspended"  %}
+                            selected
+                        {% endif %}
+                                >Suspended</option>
+                        <option value="terminated" 
+                        {% if request.GET.status == "terminated"  %}
+                            selected
+                        {% endif %}
+                                >Terminated</option>
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <input
+                        type="text"
+                        name="search"
+                        class="form-control"
+                        placeholder="Search Invoice ID or Name..."
+                        value="{{ request.GET.search }}"
+                    >
+                </div>
+
+                <div class="col">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Search</button>
+                    <a href="{% url 'invoice_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-clockwise me-1"></i> Reset</a>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-secondary">
+                        <th scope="col">Invoice ID</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Amount</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Due Date</th>
+                        <th scope="col">Suspension Mail</th>
+                        <th scope="col">Termination Notice</th>
+                        <th scope="col">Queue Termination</th>
+                        <th scope="col">Final Termination</th>
+                    </thead>
+                    <tbody>
+                        {% if not page_obj.object_list %}
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-4">
+                                    No invoices found matching your filters
+                                </td>
+                            </tr>
+                        {% else %}
+                            {% for invoice in page_obj %}
+                                <tr scope="row"
+                                    data-suspension="{{ invoice.suspension_sent|yesno:'true,false' }}"
+                                    data-confirmation="{{ invoice.confirmation_sent|yesno:'true,false' }}"
+                                    data-queue="{{ invoice.queue_sent|yesno:'true,false' }}"
+                                    data-client="{{ invoice.name }}"
+                                    data-amount="{{ invoice.amount }}"
+                                    data-invoice="{{ invoice.id }}"
+                                    data-due="{{ invoice.duedate }}"
+                                    data-domain="{{ invoice.domain }}"
+                                    data-plan="{{ invoice.plan }}"
+                                    data-service="{{ invoice.service }}"
+                                    class="
+                                    {% if invoice.display_status == 'paid' %} table-success
+                                    {% elif invoice.display_status == 'suspended' %} table-warning
+                                    {% elif invoice.display_status == 'terminated' %} table-secondary
+                                    {% else %} table-danger
+                                    {% endif %}
+                                ">
+                                    <td>{{ invoice.id }}</td>
+                                    <td class="fw-semibold">{{ invoice.name }}</td>
+                                    <td><small class="text-muted d-block">{{ invoice.email }}</small></td>
+                                    <td class="fw-bold text-success">
+                                        <div class="d-flex align-items-center justify-content-center gap-1">
+                                            <i class="bi bi-currency-rupee me-1"></i>
+                                            <span>{{ invoice.amount }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        
+                                        {% if invoice.display_status == 'paid' %}
+                                            <span class="badge rounded-pill bg-success px-3 py-2" >Paid</span>
+
+                                        {% elif invoice.display_status == 'suspended' %}
+                                            <span class="badge rounded-pill bg-warning px-3 py-2">Suspended</span>
+                                        {% elif invoice.display_status == 'terminated' %}
+                                            <span class="badge rounded-pill bg-secondary px-3 py-2">Terminated</span>
+                                        
+                                        {% else %}
+                                            <span class="badge rounded-pill bg-danger px-3 py-2">Unpaid</span>
+                                        {% endif %}
+                                            
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-center gap-1 text-nowrap">
+                                            <i class="bi bi-calendar-event me-1 text-muted"></i>
+                                            <span>{{ invoice.duedate }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        
+                                        {% if invoice.status == "Paid" %}
+                                            <span class="badge rounded-pill bg-secondary px-2 py-2"><i class="bi bi-ban me-1"></i>N/A</span>
+                                        
+                                        {% elif invoice.suspension_sent %}
+                                            <span class="badge rounded-pill bg-success px-2 py-2"><i class="bi bi-check me-1"></i>Sent</span>
+                                        
+                                        {% else %}
+                                            <button
+                                                type="button"
+                                                class="btn btn-warning btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#emailModal"
+                                                data-type="suspension"
+                                                data-id="{{ invoice.id }}"
+                                            >
+                                                Suspend
+                                            </button>
+                                        {% endif %}
+                                            
+                                    </td>
+                                    <td>
+                                        {% if invoice.status == "Paid" %}
+                                            <span class="badge rounded-pill bg-secondary px-2 py-2"><i class="bi bi-ban me-1"></i>N/A</span>
+
+                                        {% elif invoice.confirmation_sent %}
+                                            <span class="badge rounded-pill bg-success px-2 py-2"><i class="bi bi-check me-1"></i>Sent</span>
+
+                                        {% else %}
+                                            <button
+                                                    type="button"
+                                                    class="btn btn-warning btn-sm"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#emailModal"
+                                                    data-type="confirmation"
+                                                    data-id="{{ invoice.id }}"
+                                            >
+                                                Notice
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if invoice.status == "Paid" %}
+                                            <span class="badge rounded-pill bg-secondary px-2 py-2">
+                                                <i class="bi bi-ban me-1"></i>N/A
+                                            </span>
+
+                                        {% elif invoice.queue_sent %}
+                                            <span class="badge rounded-pill bg-success px-2 py-2">
+                                                <i class="bi bi-check me-1"></i>Sent
+                                            </span>
+
+                                        {% else %}
+                                            <button
+                                                type="button"
+                                                class="btn btn-dark btn-sm"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#emailModal"
+                                                data-type="queue"
+                                                data-id="{{ invoice.id }}"
+                                            >
+                                                <i class="bi bi-clock-history me-1"></i>Queue
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if invoice.status == "Paid" %}
+                                            <span class="badge rounded-pill bg-secondary px-2 py-2"><i class="bi bi-ban me-1"></i>N/A</span>
+
+                                        {% elif invoice.termination_sent %}
+                                            <span class="badge rounded-pill bg-success px-2 py-2"><i class="bi bi-check me-1"></i>Sent</span>
+
+                                        {% else %}
+                                            <button
+                                                    type="button"
+                                                    class="btn btn-danger btn-sm"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#emailModal"
+                                                    data-type="termination"
+                                                    data-id="{{ invoice.id }}"
+                                                >
+                                                <i class="bi bi-x-circle me-1"></i>Terminate
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            <div class="modal fade" id="emailModal">
+                                <div class="modal-dialog modal-lg">
+                                    <div class="modal-content">
+
+                                        <form method="post" id="emailForm">
+                                            {% csrf_token %}
+
+                                            <div class="modal-header d-flex align-items-center justify-content-between gap-3 flex-grow-1">
+                                                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                                                    <span>Template</span>
+                                                    <select id="templateSelect" class="form-select form-select-sm flex-grow-1"></select>
+                                                </div>
+                                                <span id="modalTypeBadge" class="badge rounded-pill px-3 bg-warning"></span>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+
+                                            <div class="modal-body">
+
+                                                <label>Subject</label>
+                                                <input type="text" name="subject" id="modalSubject" class="form-control mb-3">
+
+                                                <label>Body</label>
+                                                <textarea name="body" id="modalBody" class="form-control" rows="10"></textarea>
+
+                                                <div id="warningBox" class="mt-2 alert alert-warning d-none">
+                                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                                    <span id="warningText"></span>
+                                                </div>
+
+                                            </div>
+
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                                <button type="submit" class="btn btn-primary">Send</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </tbody>
+                </table>
+                <nav>
+                    <ul class="pagination justify-content-center">
+                        
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}& 
+                                    {% if request.GET.status %}
+                                        status={{ request.GET.status }}&
+                                    {% endif %}
+                                    {% if request.GET.search %}
+                                        search={{ request.GET.search|urlencode }}
+                                    {% endif %}"
+                                >Previous</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Previous</span>
+                            </li>
+                        {% endif %}
+
+                        
+                        {% for num in page_obj.paginator.page_range %}
+                            {% if page_obj.number == num %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                            {% else %}
+                                <li class="page-item ">
+                                    <a class="page-link" href="?page={{ num }}& 
+                                        {% if request.GET.status %}
+                                            status={{ request.GET.status }}&
+                                        {% endif %}
+                                        {% if request.GET.search %}
+                                            search={{ request.GET.search|urlencode }}
+                                        {% endif %}"
+                                    >{{ num }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}& 
+                                    {% if request.GET.status %}
+                                        status={{ request.GET.status }}&
+                                    {% endif %}
+                                    {% if request.GET.search %}
+                                        search={{ request.GET.search|urlencode }}
+                                    {% endif %}"
+                                >Next</a>
+                            </li>
+                            {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">Next</span>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const templates = JSON.parse(`{{ templates_json|escapejs}} `);
+        console.log(templates);
+        document.addEventListener("DOMContentLoaded", function () {
+            const subjectInput = document.getElementById("modalSubject");
+            const bodyInput = document.getElementById("modalBody");
+            const modal = document.getElementById("emailModal");
+            const select = document.getElementById("templateSelect");
+
+            let currentData = {};
+
+            
+            {% verbatim %}
+                function renderTemplate(text, data) {
+                    text = text.replace(/\\{\\{/g, "{{").replace(/\\}\\}/g, "}}");
+                    return text.replace(/{{\s*(\w+)\s*}}/g, function(match, key) {
+                        return data[key] ?? match;
+                    })
+                }
+            {% endverbatim %}
+
+            select.addEventListener("change", function() {
+                const selected = this.options[this.selectedIndex];
+
+                if(!selected.value) return;
+
+                console.log(selected)
+
+                let subject = JSON.parse(selected.dataset.subject);
+                let body = JSON.parse(selected.dataset.body);
+
+                subject = renderTemplate(subject, currentData);
+                body = renderTemplate(body, currentData);
+
+                subjectInput.value = subject;
+                bodyInput.value = body;
+            })
+
+            modal.addEventListener("show.bs.modal", function (event) {
+                const button = event.relatedTarget;
+
+                const type = button.getAttribute("data-type");
+                const invoiceId = button.getAttribute("data-id");
+
+                const badge = document.getElementById("modalTypeBadge");
+                badge.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                badge.className = "badge rounded-pill px-3";
+                badge.classList.add({
+                    suspension: "bg-warning",
+                    confirmation: "bg-warning",
+                    queue: "bg-dark",
+                    termination: "bg-danger",
+                }[type] ?? "bg-secondary")
+
+                const row = button.closest("tr");
+
+                currentData = {
+                    client_name: row.dataset.client,
+                    invoice_id: row.dataset.invoice,
+                    amount: row.dataset.amount,
+                    due_date: row.dataset.due,
+                    domain: row.dataset.domain,
+                    plan: row.dataset.plan,
+                    service: row.dataset.service
+                }
+
+                select.innerHTML = '<option value="">Select Template</option>';
+
+                if(templates[type]) {
+                    templates[type].forEach(t => {
+                        const option = document.createElement("option");
+                        option.value = t.id;
+                        option.textContent = t.name;
+
+                        option.dataset.subject = JSON.stringify(t.subject);
+                        option.dataset.body = JSON.stringify(t.body);
+                        
+                        select.appendChild(option);
+                    })
+                }
+
+                if (select.options.length > 1) {
+                    select.selectedIndex = 1;
+                    select.dispatchEvent(new Event("change"));
+                } else {
+                    subjectInput.value = "";
+                    bodyInput.value = "";
+                }
+
+                document.getElementById("emailForm").action = `/send/${type}/${invoiceId}/`;
+
+                const suspension = row.dataset.suspension === "true";
+                const confirmation = row.dataset.confirmation === "true";
+                const queue = row.dataset.queue === "true";
+
+                let warning = "";
+
+                if (type === "confirmation" && !suspension) {
+                    warning = "You are skipping Suspension step.";
+                }
+
+                if (type === "queue" && !confirmation) {
+                    warning = "You are skipping Notice step.";
+                }
+
+                if (type === "termination") {
+                    if (!suspension && !confirmation && !queue) {
+                        warning = "You are skipping ALL steps (Suspension + Notice + Queue).";
+                    } else if (!suspension && !confirmation) {
+                        warning = "You are skipping ALL steps (Suspension + Notice).";
+                    } else if (!confirmation) {
+                        warning = "You are skipping Notice step.";
+                    }
+                }
+
+                const warningBox = document.getElementById("warningBox");
+                const warningText = document.getElementById("warningText");
+
+                if (warning) {
+                    warningText.innerText = warning;
+                    warningBox.classList.remove("d-none");
+                } else {
+                    warningBox.classList.add("d-none");
+                }
+            });
+        });
+    </script>
+{% endblock content %}
