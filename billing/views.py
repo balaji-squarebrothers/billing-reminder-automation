@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 from sys import stdout
+import uuid
 
 from django.contrib import messages
 
@@ -8,12 +9,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from django.template import Context, Template
 
+from django.utils import timezone
+
 from django.core.paginator import Paginator
 
 from billing.services.api import get_invoices, get_invoice_details
 from billing.services.email_service import send_reminder_email
 
-from billing.models import ActionTracker, Invoice, MessageTemplate
+from billing.models import ActionTracker, Invoice, MessageTemplate, Notification
 from billing.services.api import get_invoices, get_invoice_details
 from billing.services.email_service import send_reminder_email
 
@@ -43,6 +46,10 @@ def invoice_list(request):
     for invoice in invoices:
         tracker = trackers.get(invoice.id)
 
+        if not tracker.confirmation_token:
+            tracker.confirmation_token = str(uuid.uuid4())
+            tracker.save()
+
         if not tracker:
             tracker = ActionTracker.objects.create(invoice_id=invoice.id)
             trackers[invoice.id] = tracker
@@ -51,6 +58,7 @@ def invoice_list(request):
         invoice.termination_sent = tracker.termination_sent
         invoice.confirmation_sent = tracker.confirmation_sent
         invoice.queue_sent = tracker.queue_sent
+        invoice.confirmation_token = tracker.confirmation_token or ""
 
         client = invoice.client
 
@@ -119,6 +127,41 @@ def send_email(request, email_type, invoice_id):
     messages.success(request, result)
 
     return redirect('invoice_list')
+
+def confirm_termination(request, token):
+    tracker = get_object_or_404(ActionTracker, confirmation_token=token)
+
+    already = tracker.confirmation_response == "yes"
+
+    return render(request, "confirmation_response.html", {"tracker": tracker, "token": token, "already": already, "accepted": False})
+
+def accept_termination(request, token):
+    if request.method != "POST":
+        return redirect('confirm_termination', token=token)
+    
+    tracker = get_object_or_404(ActionTracker, confirmation_token=token)
+
+    if tracker.confirmation_response == "yes":
+        return render(request, "confirmation_response.html", {"tracker": tracker, "token": token, "already": True, "accepted": False})
+
+    
+    tracker.confirmation_response = "yes"
+    tracker.responded_at = timezone.now()
+    tracker.save()
+
+    Notification.object.create(
+        invoice_id=tracker.invoice_id,
+        message=f"Client confirmed termination for invoice {tracker.invoice_id}.",
+        type="action"
+    )
+
+    return render(request, "confirmation_response.html", {"tracker": tracker, "token": token, "already": False, "accepted": True})
+
+def notification_list(request):
+    db_notification = Notification.objects.select_related('invoice').order_by('-created_at')
+    return render(request, "notification_list.html", {
+        "notifications": db_notification,
+    })
 
 def render_template(template_obj, data):
     subject_template = Template(template_obj.subject)

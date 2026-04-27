@@ -11,6 +11,8 @@ db.sqlite3
 *.log
 media/
 
+.env
+
 # CSV data
 billing/data/*.csv
 

@@ -52,10 +52,32 @@ class ActionTracker(models.Model):
     termination_sent = models.BooleanField(default=False)
     termination_sent_at = models.DateTimeField(null=True, blank=True)
 
+    confirmation_response = models.CharField(max_length=10, null=True, blank=True)
+    confirmation_token = models.CharField(max_length=100, blank=True, null=True)
+
+    responded_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.invoice_id
+    
+class Notification(models.Model):
+    TYPE_CHOICES = [
+        ("info", "Info"),
+        ("warning", "Warning"),
+        ("action", "Action Required"),
+        ("success", "Success"),
+    ]
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
+    message = models.TextField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES)
+    is_read = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.invoice.id} - {self.message[:30]}"
 
 
 class EmailLog(models.Model):
