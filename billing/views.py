@@ -149,7 +149,7 @@ def accept_termination(request, token):
     tracker.responded_at = timezone.now()
     tracker.save()
 
-    Notification.object.create(
+    Notification.objects.create(
         invoice_id=tracker.invoice_id,
         message=f"Client confirmed termination for invoice {tracker.invoice_id}.",
         type="action"

@@ -23,7 +23,7 @@ def send_reminder_email(invoice_id, recipient_email, email_type, subject, body):
         email = EmailMessage(
               subject=subject,
               body=body,
-              to=["sajewi9828@hacknapp.com"],
+              to=['sajewi9828@hacknapp.com'],
         )
         email.send(fail_silently=False)
 
