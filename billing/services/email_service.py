@@ -5,11 +5,13 @@ import uuid
 
 from django.utils import timezone
 
-from billing.models import ActionTracker, MessageLog
+from billing.models import ActionTracker, EmailLog
 from django.core.mail import send_mail
 
 from django.conf import settings
 from django.urls import reverse
+
+from django.core.mail import EmailMessage
 
 def send_reminder_email(invoice, recipient_email, email_type, subject, body, include_confirm_link=False):
         tracker, _ = ActionTracker.objects.get_or_create(invoice=invoice)
@@ -21,7 +23,7 @@ def send_reminder_email(invoice, recipient_email, email_type, subject, body, inc
             if tracker.confirmation_expires_at and tracker.confirmation_expires_at > timezone.now():
                 return f"Confirmation already active for {invoice.id}"
         else:
-            if MessageLog.objects.filter(invoice=invoice, email_type=email_type, channel='email').exists():
+            if EmailLog.objects.filter(invoice=invoice, email_type=email_type).exists():
                 return f"Already sent {email_type} for {invoice.id}"
         
         
@@ -41,16 +43,31 @@ def send_reminder_email(invoice, recipient_email, email_type, subject, body, inc
 
             tracker.save()
 
-        email = MAIL(
-              subject=subject,
-              body=body,
-              to=[recipient_email],
-            # to=['jdfhm73693@minitts.net'],
+        log = EmailLog.objects.create(
+            invoice=invoice,
+            email_type=email_type,
+            status="pending"
         )
-        email.content_subtype = "html"
-        email.send(fail_silently=False)
 
-        MessageLog.objects.create(invoice=invoice, email_type=email_type, channel='email')
+        try:
+            email = EmailMessage(
+                subject=subject,
+                body=body,
+                to=[recipient_email],
+            )
+            email.content_subtype = "html"
+            email.send(fail_silently=False)
+
+            log.status = "sent"
+            log.save()
+
+        except Exception as e:
+            log.status = "failed"
+            log.retry_count += 1
+            log.last_error = str(e)
+            log.save()
+
+            return f"Failed {email_type} for {invoice.id}"
 
         if email_type == "suspension":
             tracker.suspension_sent = True

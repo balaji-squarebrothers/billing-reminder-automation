@@ -7,8 +7,6 @@ from django.contrib import messages
 
 from django.shortcuts import get_object_or_404, redirect, render
 
-from django.template import Context, Template
-
 from django.utils import timezone
 
 from django.core.paginator import Paginator
@@ -110,7 +108,7 @@ def invoice_list(request):
     })
 
 @login_required
-def notify_client(request, email_type, invoice_id):
+def send_email(request, email_type, invoice_id):
     if not can_send_action(request.user, email_type):
         messages.error(request, "You are not allowed to perform this action")
         return redirect('invoice_list')
@@ -131,19 +129,17 @@ def notify_client(request, email_type, invoice_id):
     subject = request.POST.get("subject", "")
     body = request.POST.get("body", "")
     include_confirm_link = request.POST.get("include_confirm_link") == "on"
-    notify_method = request.POST.get("notify_method", "")
-    methods = notify_method.split(",")
 
-    messages_list = []
+    result = send_reminder_email(
+        invoice=invoice,
+        email_type=email_type,
+        recipient_email=client.email,
+        subject=subject,
+        body=body,
+        include_confirm_link=include_confirm_link
+    )
 
-    if 'email' in methods:
-        email_result = send_reminder_email(...)
-        messages_list.append(email_result)
-
-    if 'whatsapp' in methods:
-        messages_list.append("WhatsApp sent")
-
-    messages.success(request, " | ".join(messages_list))
+    messages.success(request, result)
 
     return redirect('invoice_list')
 
@@ -205,17 +201,6 @@ def notification_list(request):
     return render(request, 'notification_list.html', {
         'notifications': notifications
     })
-
-def render_template(template_obj, data):
-    subject_template = Template(template_obj.subject)
-    body_template = Template(template_obj.body)
-
-    context = Context(data)
-
-    subject = subject_template.render(context)
-    body = body_template.render(context)
-
-    return subject, body
 
 def template_list(request):
     templates = MessageTemplate.objects.all()

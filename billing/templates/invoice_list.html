@@ -329,21 +329,9 @@
 
                                 </div>
 
-                                <div class="modal-footer d-flex justify-content-between">
-                                    <div class="d-flex gap-2" id="notifyOptions">
-                                        <button type="button" class="btn btn-outline-primary option-chip" data-type="email">
-                                            <i class="bi bi-envelope"></i>
-                                        </button>
-
-                                        <button type="button" class="btn btn-outline-success option-chip" data-type="whatsapp">
-                                            <i class="bi bi-whatsapp"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="notify_method" id="notifyMethodInput" value="email">
-                                    <div>
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="submit" class="btn btn-primary" id="sendBtn">Send</button>
-                                    </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-primary" id="sendBtn">Send</button>
                             </form>
                         </div>
                     </div>
@@ -403,11 +391,7 @@
             const select = document.getElementById("templateSelect");
             const confirmLinkBox = document.getElementById("confirmLinkBox");
             const includeConfirmLink = document.getElementById("includeConfirmLink");
-            const chips = document.querySelectorAll(".option-chip");
-            const notifyMethodInput = document.getElementById("notifyMethodInput");
-            let sendBtn = null
-
-            let selectedNotifyMethod = new Set(["email", "whatsapp"]);
+            
             let currentData = {};
             
             {% verbatim %}
@@ -418,35 +402,6 @@
                     })
                 }
             {% endverbatim %}
-
-            function updateInput() {
-                notifyMethodInput.value = Array.from(selectedNotifyMethod).join(",");
-
-                if (sendBtn) {
-                    sendBtn.disabled = selectedNotifyMethod.size === 0;
-                }
-            }
-
-            chips.forEach(chip => {
-                chip.addEventListener("click", function () {
-                    const type = this.dataset.type;
-
-                    if (selectedNotifyMethod.has(type)) {
-                        selectedNotifyMethod.delete(type);
-                        this.classList.remove("active");
-                    } else {
-                        selectedNotifyMethod.add(type);
-                        this.classList.add("active");
-                    }
-
-                    updateInput();
-                });
-            });
-
-            document.querySelector('[data-type="email"]').classList.add("active");
-            document.querySelector('[data-type="whatsapp"]').classList.add("active");
-
-            updateInput();
 
             function applyTemplate() {
                 const selected = select.options[select.selectedIndex];
@@ -476,7 +431,7 @@
 
                 const type = button.getAttribute("data-type");
                 const invoiceId = button.getAttribute("data-id");
-                sendBtn = document.querySelector("#emailForm button[type='submit']");
+                const sendBtn = document.querySelector("#emailForm button[type='submit']");
 
                 if (isTrainee && ["termination", "queue", "confirmation"].includes(type)) {
                     event.preventDefault();
@@ -580,20 +535,6 @@
         }
         .badge:hover {
             opacity: 0.85;
-        }
-        .option-chip {
-            border-radius: 50px;
-            width: 45px;
-            height: 45px;
-        }
-
-        .option-chip.active {
-            background-color: #0d6efd;
-            color: white;
-        }
-
-        .option-chip[data-type="whatsapp"].active {
-            background-color: #25D366;
         }
         button:disabled {
             opacity: 0.6;

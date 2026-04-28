@@ -85,14 +85,12 @@ class Notification(models.Model):
         return f"{self.invoice.id} - {self.message[:30]}"
 
 
-class MessageLog(models.Model):
-    CHANNEL_CHOICES = [
-        ("whatsApp", "WhatsApp"),
-        ("email", "Email"),
-    ]
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='logs')
-    channel = models.CharField(max_length=50, choices=CHANNEL_CHOICES, default='emails')
+class EmailLog(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
     email_type = models.CharField(max_length=50)
+    status = models.CharField(max_length=20, default="pending")  # pending/sent/failed
+    retry_count = models.IntegerField(default=0)
+    last_error = models.TextField(null=True, blank=True)
     sent_at = models.DateTimeField(auto_now_add=True)
     sent_by = models.CharField(max_length=100, default='system')
 
