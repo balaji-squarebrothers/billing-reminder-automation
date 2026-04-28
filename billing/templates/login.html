@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-center align-items-center" style="min-height: 70vh;">
+    <div class="card shadow-sm border-0 p-4" style="width: 350px;">
+        <h4 class="text-center mb-3">Login</h4>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="mb-3">
+                <label>Username</label>
+                <input type="text" name="username" class="form-control">
+            </div>
+
+            <div class="mb-3">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control">
+            </div>
+
+            <button class="btn btn-primary w-100">Login</button>
+        </form>
+
+        {% if form.errors %}
+            <div class="alert alert-danger mt-3">
+                Invalid credentials
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

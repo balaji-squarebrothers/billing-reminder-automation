@@ -38,13 +38,18 @@ class InvoiceItem(models.Model):
 
 
 class ActionTracker(models.Model):
-    invoice_id = models.CharField(max_length=100, unique=True)
+    invoice = models.OneToOneField(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="tracker"
+    )
 
     suspension_sent = models.BooleanField(default=False)
     suspension_sent_at = models.DateTimeField(null=True, blank=True)
 
     confirmation_sent = models.BooleanField(default=False)
     confirmation_sent_at = models.DateTimeField(null=True, blank=True)
+    confirmation_expires_at = models.DateTimeField(null=True, blank=True)
 
     queue_sent = models.BooleanField(default=False)
     queue_sent_at = models.DateTimeField(null=True, blank=True)
@@ -59,7 +64,7 @@ class ActionTracker(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.invoice_id
+        return str(self.invoice.id)
     
 class Notification(models.Model):
     TYPE_CHOICES = [
@@ -80,14 +85,19 @@ class Notification(models.Model):
         return f"{self.invoice.id} - {self.message[:30]}"
 
 
-class EmailLog(models.Model):
-    invoice_id = models.CharField(max_length=100)
+class MessageLog(models.Model):
+    CHANNEL_CHOICES = [
+        ("whatsApp", "WhatsApp"),
+        ("email", "Email"),
+    ]
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='logs')
+    channel = models.CharField(max_length=50, choices=CHANNEL_CHOICES, default='emails')
     email_type = models.CharField(max_length=50)
     sent_at = models.DateTimeField(auto_now_add=True)
     sent_by = models.CharField(max_length=100, default='system')
 
     def __str__(self):
-        return f"{self.invoice_id} - {self.email_type}"
+        return f"{self.invoice.id} - {self.channel} - {self.email_type}"
     
 class MessageTemplate(models.Model):
     TEMPLATE_TYPES = [

@@ -1,6 +1,6 @@
 from collections import defaultdict
 import json
-from sys import stdout
+
 import uuid
 
 from django.contrib import messages
@@ -13,25 +13,23 @@ from django.utils import timezone
 
 from django.core.paginator import Paginator
 
-from billing.services.api import get_invoices, get_invoice_details
 from billing.services.email_service import send_reminder_email
 
 from billing.models import ActionTracker, Invoice, MessageTemplate, Notification
-from billing.services.api import get_invoices, get_invoice_details
-from billing.services.email_service import send_reminder_email
 
-from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
 
-
+@login_required
 def invoice_list(request):
-    filter_status = request.GET.get('status')
+    payment_filter = request.GET.get('payment_status')
+    workflow_filter = request.GET.get('workflow_status')
     search_query = request.GET.get('search')
 
     invoices = Invoice.objects.select_related('client').prefetch_related('items')
 
     enriched = []
 
-    trackers = { t.invoice_id: t for t in ActionTracker.objects.all()}
+    trackers = { t.invoice.id: t for t in ActionTracker.objects.select_related('invoice')}
 
     grouped_templates = defaultdict(list)
 
@@ -46,12 +44,8 @@ def invoice_list(request):
     for invoice in invoices:
         tracker = trackers.get(invoice.id)
 
-        if not tracker.confirmation_token:
-            tracker.confirmation_token = str(uuid.uuid4())
-            tracker.save()
-
         if not tracker:
-            tracker = ActionTracker.objects.create(invoice_id=invoice.id)
+            tracker = ActionTracker.objects.create(invoice=invoice)
             trackers[invoice.id] = tracker
 
         invoice.suspension_sent = tracker.suspension_sent
@@ -60,10 +54,10 @@ def invoice_list(request):
         invoice.queue_sent = tracker.queue_sent
         invoice.confirmation_token = tracker.confirmation_token or ""
 
-        client = invoice.client
+        client = invoice.client if invoice.client else None
 
-        invoice.name = str(client)
-        invoice.email = client.email
+        invoice.name = str(client) if client else "Unknown"
+        invoice.email = client.email if client and client.email else ""
         invoice.amount = invoice.total
 
         if invoice.status == "Paid":
@@ -75,13 +69,26 @@ def invoice_list(request):
         else:
             invoice.display_status = "unpaid"
 
-        if filter_status and invoice.display_status != filter_status:
-            continue
+        if payment_filter:
+            if payment_filter == "paid" and invoice.status != "Paid":
+                continue
+            if payment_filter == "unpaid" and invoice.status == "Paid":
+                continue
+
+        if workflow_filter:
+            if workflow_filter == "suspended" and not tracker.suspension_sent:
+                continue
+            if workflow_filter == "confirmation" and not tracker.confirmation_sent:
+                continue
+            if workflow_filter == "queue" and not tracker.queue_sent:
+                continue
+            if workflow_filter == "terminated" and not tracker.termination_sent:
+                continue
 
         if search_query and search_query.lower() not in (str(invoice.id).lower() + (invoice.name or "").lower()):
             continue
 
-        item = invoice.items.first()
+        item = invoice.items.first() if hasattr(invoice, 'items') else None
 
         invoice.domain = item.domain_name if item else ""
         invoice.plan = item.plan_name if item else ""
@@ -96,10 +103,18 @@ def invoice_list(request):
 
     return render(request, "invoice_list.html", {
         "page_obj": page_obj,
-        "templates_json": json.dumps(grouped_templates, ensure_ascii=False)
+        "templates_json": json.dumps(grouped_templates, ensure_ascii=False),
+
+        "can_edit_email": can_edit_email(request.user),
+        "is_trainee": is_trainee(request.user)
     })
 
-def send_email(request, email_type, invoice_id):
+@login_required
+def notify_client(request, email_type, invoice_id):
+    if not can_send_action(request.user, email_type):
+        messages.error(request, "You are not allowed to perform this action")
+        return redirect('invoice_list')
+    
     if request.method != "POST":
         return redirect('invoice_list')
     
@@ -115,21 +130,35 @@ def send_email(request, email_type, invoice_id):
 
     subject = request.POST.get("subject", "")
     body = request.POST.get("body", "")
+    include_confirm_link = request.POST.get("include_confirm_link") == "on"
+    notify_method = request.POST.get("notify_method", "")
+    methods = notify_method.split(",")
 
-    result = send_reminder_email(
-        invoice_id=invoice_id, 
-        recipient_email=client.email,
-        email_type=email_type,
-        subject=subject,
-        body=body
-    )
+    messages_list = []
 
-    messages.success(request, result)
+    if 'email' in methods:
+        email_result = send_reminder_email(...)
+        messages_list.append(email_result)
+
+    if 'whatsapp' in methods:
+        messages_list.append("WhatsApp sent")
+
+    messages.success(request, " | ".join(messages_list))
 
     return redirect('invoice_list')
 
 def confirm_termination(request, token):
-    tracker = get_object_or_404(ActionTracker, confirmation_token=token)
+    tracker = get_object_or_404(
+        ActionTracker,
+        confirmation_token=token,
+        confirmation_token__isnull=False
+    )
+
+    if tracker.confirmation_expires_at and tracker.confirmation_expires_at < timezone.now():
+        return render(request, "confirmation_response.html", {
+            "tracker": tracker,
+            "expired": True
+        })
 
     already = tracker.confirmation_response == "yes"
 
@@ -139,7 +168,17 @@ def accept_termination(request, token):
     if request.method != "POST":
         return redirect('confirm_termination', token=token)
     
-    tracker = get_object_or_404(ActionTracker, confirmation_token=token)
+    tracker = get_object_or_404(
+        ActionTracker,
+        confirmation_token=token,
+        confirmation_token__isnull=False
+    )
+
+    if tracker.confirmation_expires_at and tracker.confirmation_expires_at < timezone.now():
+        return render(request, "confirmation_response.html", {
+            "tracker": tracker,
+            "expired": True
+        })
 
     if tracker.confirmation_response == "yes":
         return render(request, "confirmation_response.html", {"tracker": tracker, "token": token, "already": True, "accepted": False})
@@ -147,20 +186,24 @@ def accept_termination(request, token):
     
     tracker.confirmation_response = "yes"
     tracker.responded_at = timezone.now()
+    tracker.confirmation_token = None
     tracker.save()
 
     Notification.objects.create(
-        invoice_id=tracker.invoice_id,
-        message=f"Client confirmed termination for invoice {tracker.invoice_id}.",
+        invoice=tracker.invoice,
+        message=f"Client confirmed termination for invoice {tracker.invoice.id}.",
         type="action"
     )
 
     return render(request, "confirmation_response.html", {"tracker": tracker, "token": token, "already": False, "accepted": True})
 
+@login_required
 def notification_list(request):
-    db_notification = Notification.objects.select_related('invoice').order_by('-created_at')
-    return render(request, "notification_list.html", {
-        "notifications": db_notification,
+    notifications = Notification.objects.order_by('-created_at')
+    Notification.objects.filter(is_read=False).update(is_read=True)
+
+    return render(request, 'notification_list.html', {
+        'notifications': notifications
     })
 
 def render_template(template_obj, data):
@@ -178,51 +221,30 @@ def template_list(request):
     templates = MessageTemplate.objects.all()
     return render(request, "template_list.html", {"templates": templates})
 
-def add_template(request):
-    if request.method == "POST":
-        name = request.POST.get("name")
-        template_type = request.POST.get("template_type")
-        subject = request.POST.get("subject")
-        body = request.POST.get("body")
+def custom_404(request, exception):
+    if not request.user.is_authenticated:
+        return redirect('login')
+    return redirect('invoice_list')
 
-        MessageTemplate.objects.create(
-            name=name,
-            subject=subject,
-            template_type=template_type,
-            body=body
-        )
+def is_trainee(user):
+    return user.groups.filter(name='Trainee').exists()
 
-        messages.success(request, "Template created successfully")
-        return redirect("template_list")
+def is_billing(user):
+    return user.groups.filter(name='Billing').exists()
 
-    return render(request, "template_form.html", {
-        "template": None,
-        "mode": "add",
-        "types": MessageTemplate.TEMPLATE_TYPES
-    })
+def is_admin(user):
+    return user.is_superuser or user.groups.filter(name='Admin').exists()
 
-def edit_template(request, template_type):
-    template = get_object_or_404(MessageTemplate, template_type=template_type)
 
-    if request.method == "POST":
-        template.name = request.POST.get("name")
-        template.subject = request.POST.get("subject")
-        template.body = request.POST.get("body")
-        template.save()
+def can_edit_email(user):
+    return is_billing(user) or is_admin(user)
 
-        messages.success(request, "Template updated successfully")
-        return redirect("template_list")
 
-    return render(request, "template_form.html", {
-        "template": template,
-        "mode": "edit"
-    })
+def can_send_action(user, action):
+    if is_admin(user) or is_billing(user):
+        return True
 
-@require_POST
-def delete_template(request, id):
-    template = get_object_or_404(MessageTemplate, id=id)
+    if is_trainee(user):
+        return action == "suspension"
 
-    template.delete()
-    messages.success(request, "Template deleted successfully")
-
-    return redirect("template_list")
+    return False

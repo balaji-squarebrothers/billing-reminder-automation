@@ -1,0 +1,86 @@
+[
+{
+  "model": "billing.messagetemplate",
+  "pk": 3,
+  "fields": {
+    "name": "Invoice Generated",
+    "template_type": "invoice_generated",
+    "subject": "Invoice Payment Link from Square Brothers - {{ invoice_id }}",
+    "body": "Hi {{ client_name }},\r\n\r\nAn Invoice has been generated and is due for payment by {{ due_date }}.\r\n\r\nInvoiced Items:\r\n===============\r\n\r\n{{ plan }} - {{ domain }}\r\n\r\nYou can conveniently make your payment using:\r\nhttps://www.squarebrothers.com/payment-methods/\r\n\r\nInvoice Number: {{ invoice_id }}\r\nInvoice Amount: {{ amount }}\r\n\r\nAlternatively, login at:\r\nhttps://manage.squarebrothers.com/\r\n\r\nIf you need help, call: 044-4000-9000\r\n\r\nAfter payment, reply with transaction details.\r\n\r\nThank you for choosing Square Brothers!",
+    "is_active": true,
+    "updated_at": "2026-04-26T13:13:26.800Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 4,
+  "fields": {
+    "name": "Due Tomorrow",
+    "template_type": "due_tomorrow",
+    "subject": "Due Date Reminder - {{ domain }}",
+    "body": "Dear Customer,\r\n\r\nYour {{ service }} for {{ domain }} is expiring on {{ due_date }}.\r\n\r\nInvoice Number: {{ invoice_id }}\r\nAmount: Rs. {{ amount }}\r\nPlan: {{ plan }}\r\n\r\nPay here:\r\nhttps://www.squarebrothers.com/payment-methods/\r\n\r\nPlease make the payment immediately.",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:27:25.212Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 5,
+  "fields": {
+    "name": "Due Today",
+    "template_type": "due_today",
+    "subject": "Due Today - {{ domain }}",
+    "body": "Dear Customer,\r\n\r\nYour {{ service }} for {{ domain }} is expiring today.\r\n\r\nInvoice Number: {{ invoice_id }}\r\nAmount: Rs. {{ amount }}\r\nPlan: {{ plan }}\r\n\r\nPay here:\r\nhttps://www.squarebrothers.com/payment-methods/\r\n\r\nPlease make the payment immediately.",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:48:28.336Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 6,
+  "fields": {
+    "name": "Suspension",
+    "template_type": "suspension",
+    "subject": "Suspension Notice - {{ domain }}",
+    "body": "Dear Customer,\r\n\r\nYour account has been suspended due to non-payment.\r\n\r\nInvoice Number: {{ invoice_id }}\r\nAmount: Rs. {{ amount }}\r\n\r\nIf payment is not made within 48 hours, your account will be permanently deleted.\r\n\r\nPay now:\r\nhttps://www.squarebrothers.com/payment-methods/",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:50:57.015Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 7,
+  "fields": {
+    "name": "Confirmation",
+    "template_type": "confirmation",
+    "subject": "Confirm Renewal - {{ domain }}",
+    "body": "Dear Customer,\r\n\r\nPlease confirm whether you want to renew {{ service }} for:\r\n\r\n{{ domain }} ({{ plan }})\r\n\r\nIf not, we will proceed with account removal.",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:51:48.299Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 8,
+  "fields": {
+    "name": "Queue (Termination Queue)",
+    "template_type": "queue",
+    "subject": "Account Queued for Termination - {{ domain }}",
+    "body": "Hi {{ client_name }},\r\n\r\nNo update received for renewal of:\r\n\r\n{{ domain }} ({{ plan }})\r\n\r\nYour account is now queued for removal.\r\n\r\nAll data will be permanently deleted.\r\n\r\nConfirm if you want to retain the account.",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:52:27.136Z"
+  }
+},
+{
+  "model": "billing.messagetemplate",
+  "pk": 9,
+  "fields": {
+    "name": "Final Termination",
+    "template_type": "termination",
+    "subject": "Termination Notice - {{ domain }}",
+    "body": "Dear Customer,\r\n\r\nYour {{ service }} for {{ domain }} will be terminated today.\r\n\r\nInvoice Number: {{ invoice_id }}\r\nAmount: Rs. {{ amount }}\r\nPlan: {{ plan }}\r\n\r\nFor recovery, call: 044-4000 9000",
+    "is_active": true,
+    "updated_at": "2026-04-26T15:54:35.567Z"
+  }
+}
+]
