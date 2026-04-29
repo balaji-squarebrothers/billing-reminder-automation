@@ -1,12 +1,23 @@
-import time
-
 from datetime import timedelta
-from django.core.mail import EmailMessage
 from django.utils import timezone
 from django.template import Context, Template
 
-from billing.models import ActionTracker, EmailLog, Invoice, MessageTemplate, Notification
-from billing.services.email_service import send_reminder_email
+from billing.models import (
+    ActionTracker,
+    EmailLog,
+    EmailTemplate,
+    Invoice,
+    Notification
+)
+
+from billing.tasks import send_email_task
+
+
+from celery.exceptions import MaxRetriesExceededError
+
+import logging
+
+logger = logging.getLogger("billing")
 
 
 DUE_TOMORROW = "due_tomorrow"
@@ -21,18 +32,12 @@ def render_template(template_obj, data):
     body = Template(template_obj.body).render(Context(data))
     return subject, body
 
-def already_sent(invoice, email_type):
-    return EmailLog.objects.filter(
-        invoice=invoice,
-        email_type=email_type,
-        status="sent"
-    ).exists()
-
 
 def run_automation():
     today = timezone.now().date()
 
-    invoices = Invoice.objects.select_related('client').prefetch_related('items').filter(status__in=['unpaid', 'overdue'])
+    invoices = Invoice.objects.select_related('client').prefetch_related('items')\
+        .filter(status__in=['unpaid', 'overdue'])
 
     invoice_ids = [inv.id for inv in invoices]
 
@@ -47,16 +52,11 @@ def run_automation():
             status="sent"
         ).values_list('invoice_id', 'email_type')
     )
-    
 
     templates = {
         t.template_type: t
-        for t in MessageTemplate.objects.filter(is_active=True)
+        for t in EmailTemplate.objects.filter(is_active=True)
     }
-
-    from concurrent.futures import ThreadPoolExecutor
-
-    email_jobs = []
 
     for invoice in invoices:
         tracker = trackers.get(invoice.id)
@@ -81,26 +81,26 @@ def run_automation():
             if template:
                 subject, body = render_template(template, data)
 
-                email_jobs.append({
-                    "invoice": invoice,
-                    "email_type": DUE_TOMORROW,
-                    "recipient_email": invoice.client.email,
-                    "subject": subject,
-                    "body": body,
-                })
+                send_email_task.delay(
+                    invoice_id=invoice.id,
+                    email_type=DUE_TOMORROW,
+                    recipient_email=invoice.client.email,
+                    subject=subject,
+                    body=body
+                )
 
         if invoice.duedate == today and (invoice.id, DUE_TODAY) not in sent_logs:
             template = templates.get(DUE_TODAY)
             if template:
                 subject, body = render_template(template, data)
 
-                email_jobs.append({
-                    "invoice": invoice,
-                    "email_type": DUE_TODAY,
-                    "recipient_email": invoice.client.email,
-                    "subject": subject,
-                    "body": body,
-                })
+                send_email_task.delay(
+                    invoice_id=invoice.id,
+                    email_type=DUE_TODAY,
+                    recipient_email=invoice.client.email,
+                    subject=subject,
+                    body=body
+                )
 
         if invoice.duedate < today and not tracker.suspension_sent:
             Notification.objects.get_or_create(
@@ -133,65 +133,60 @@ def run_automation():
                     type=WARNING
                 )
 
-    BATCH_SIZE = 20
-
-    def send_job(job):
-        send_reminder_email(
-            invoice=job["invoice"],
-            email_type=job["email_type"],
-            recipient_email=job["recipient_email"],
-            subject=job["subject"],
-            body=job["body"]
-        )
-
-    for i in range(0, len(email_jobs), BATCH_SIZE):
-        batch = email_jobs[i:i+BATCH_SIZE]
-
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            executor.map(send_job, batch)
-
-        time.sleep(2)
 
 def retry_failed_emails():
-    failed_logs = EmailLog.objects.select_related('invoice__client').filter(
-        status="failed",
-        retry_count__lt=3
-    ).iterator(chunk_size=20)
+    try:
+        failed_logs = EmailLog.objects.select_related('invoice__client').filter(
+            status="failed",
+            retry_count__lt=3
+        )
 
-    for log in failed_logs:
-        invoice = log.invoice
-
-        template = MessageTemplate.objects.filter(
-            template_type=log.email_type,
-            is_active=True
-        ).first()
-
-        if not template:
-            continue
-
-        data = {
-            "client_name": str(invoice.client),
-            "invoice_id": invoice.id,
-            "amount": invoice.total,
+        templates = {
+            t.template_type: t
+            for t in EmailTemplate.objects.filter(is_active=True)
         }
 
-        subject, body = render_template(template, data)
+        for log in failed_logs:
+            invoice = log.invoice
+            template = templates.get(log.email_type)
 
-        try:
-            email = EmailMessage(
+            if not template:
+                continue
+
+            data = {
+                "client_name": str(invoice.client),
+                "invoice_id": invoice.id,
+                "amount": invoice.total,
+            }
+
+            subject, body = render_template(template, data)
+
+            send_email_task.delay(
+                invoice_id=invoice.id,
+                email_type=log.email_type,
+                recipient_email=invoice.client.email,
                 subject=subject,
-                body=body,
-                to=[invoice.client.email],
+                body=body
             )
-            email.content_subtype = "html"
-            email.send()
 
-            log.status = "sent"
-            log.save()
+    except Exception as exc:
+        try:
+            logger.error(
+                "Email task failed, retrying...",
+                exc_info=True,
+                extra={
+                    "invoice_id": invoice.id,
+                    "email_type": log.email_type
+                }
+            )
+            raise self.retry(exc=exc)
 
-            time.sleep(0.2)
-
-        except Exception as e:
-            log.retry_count += 1
-            log.last_error = str(e)
-            log.save()
+        except MaxRetriesExceededError:
+            logger.critical(
+                "Max retries exceeded for email task",
+                exc_info=True,
+                extra={
+                    "invoice_id": invoice.id,
+                    "email_type": log.email_type
+                }
+            )

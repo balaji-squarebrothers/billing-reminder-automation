@@ -1,4 +1,26 @@
 from django.db import models
+from django.contrib.auth.models import User, Group
+
+class GroupPermission(models.Model):
+    ACTION_CHOICES = [
+        ('send_suspension', 'Send Suspension Email'),
+        ('send_confirmation', 'Send Confirmation Email'),
+        ('send_queue', 'Send Queue Email'),
+        ('send_termination', 'Send Termination Email'),
+        ('edit_email_body', 'Edit Email Body Before Sending'),
+        ('view_notifications', 'View Notifications'),
+        ('receive_action_notifications', 'Receive Action Notifications'),
+        ('receive_warning_notifications', 'Receive Warning Notifications'),
+    ]
+
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='billing_permissions')
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+
+    class Meta:
+        unique_together = ('group', 'action')
+
+    def __str__(self):
+        return f"{self.group.name} {self.action}"
 
 
 class Client(models.Model):
@@ -63,6 +85,10 @@ class ActionTracker(models.Model):
     responded_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    otp_code = models.CharField(max_length=6, null=True, blank=True)
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_verified = models.BooleanField(default=False)
+
     def __str__(self):
         return str(self.invoice.id)
     
@@ -74,30 +100,42 @@ class Notification(models.Model):
         ("success", "Success"),
     ]
 
+    target_groups = models.ManyToManyField(Group, blank=True)
+
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
     message = models.TextField()
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    is_read = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.invoice.id} - {self.message[:30]}"
+    
+class NotificationRead(models.Model):
+    notification = models.ForeignKey(Notification, on_delete=models.CASCADE, related_name='reads')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    read_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('notification', 'user')
+
+    def __str__(self):
+        return f"{self.user} read {self.notification.id}"
 
 class EmailLog(models.Model):
+    ticket = models.CharField(max_length=15, unique=True, null=True, blank=True)
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
     email_type = models.CharField(max_length=50)
-    status = models.CharField(max_length=20, default="pending")  # pending/sent/failed
+    status = models.CharField(max_length=20, default="pending")
     retry_count = models.IntegerField(default=0)
     last_error = models.TextField(null=True, blank=True)
     sent_at = models.DateTimeField(auto_now_add=True)
-    sent_by = models.CharField(max_length=100, default='system')
+    sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.invoice.id} - {self.channel} - {self.email_type}"
+        return f"{self.invoice.id} - {self.email_type}"
     
-class MessageTemplate(models.Model):
+class EmailTemplate(models.Model):
     TEMPLATE_TYPES = [
         ("invoice_generated", "Invoice Generated"),
         ("due_tomorrow", "1 Day Before Due"),

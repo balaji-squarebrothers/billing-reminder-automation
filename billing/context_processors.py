@@ -7,7 +7,9 @@ def notification_count(request):
 
         from billing.models import Notification
 
-        count = Notification.objects.filter(is_read=False).count()
+        count = Notification.objects.exclude(
+            reads__user=user
+        ).count()
 
         return {"unread_notifications_count": count}
 
